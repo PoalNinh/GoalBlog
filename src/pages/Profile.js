@@ -29,14 +29,18 @@ const Profile = () => {
         fetchUserData();
     }, []);
 
-    // Sử dụng API mới không cần truyền ID
     const fetchUserData = async () => {
         try {
             setLoading(true);
-            const token = authUtils.getToken();
+            const localUser = authUtils.getUserData();
             
-            // Sử dụng API endpoint không cần ID - API sẽ tự xác định người dùng từ token
-            const response = await authUtils.apiRequest(`employees`, 'GET', null, token);
+            if (!localUser || !localUser.id) {
+                toast.error('Phiên đăng nhập đã hết hạn');
+                return;
+            }
+            
+            const token = authUtils.getToken();
+            const response = await authUtils.apiRequest(`employees/${localUser.id}`, 'GET', null, token);
             
             if (!response) {
                 throw new Error('Không tìm thấy thông tin người dùng');
@@ -118,15 +122,15 @@ const Profile = () => {
             }
             
             const token = authUtils.getToken();
-            // Chỉ gửi các trường mà người dùng thường được phép cập nhật
             const updatedData = {
                 hoVaTen: formData.hoVaTen,
+                chucVu: formData.chucVu,
+                phong: formData.phong,
                 email: formData.email,
                 image: imageUrl
             };
             
-            // Sử dụng API không cần ID
-            await authUtils.apiRequest(`employees`, 'PUT', updatedData, token);
+            await authUtils.apiRequest(`employees/${userData.NhanVienID}`, 'PUT', updatedData, token);
 
             // Cập nhật userData với thông tin mới
             const updatedUserData = { ...userData, ...updatedData };
@@ -142,9 +146,6 @@ const Profile = () => {
             toast.success('Cập nhật thông tin thành công');
             setEditing(false);
             setImageFile(null);
-            
-            // Tải lại thông tin người dùng để đảm bảo dữ liệu hiển thị mới nhất
-            fetchUserData();
         } catch (error) {
             console.error('Update profile error:', error);
             toast.error('Cập nhật thông tin thất bại');
@@ -177,8 +178,8 @@ const Profile = () => {
             
             const token = authUtils.getToken();
             
-            // Gọi API đổi mật khẩu không cần ID
-            await authUtils.apiRequest(`employees`, 'PUT', {
+            // API endpoint để đổi mật khẩu
+            await authUtils.apiRequest(`employees/${userData.NhanVienID}`, 'PUT', {
                 password: passwordData.newPassword,
                 currentPassword: passwordData.currentPassword
             }, token);
@@ -347,7 +348,7 @@ const Profile = () => {
                                         name="chucVu"
                                         value={formData.chucVu}
                                         onChange={handleInputChange}
-                                        disabled={true} // Nhân viên không được thay đổi chức vụ
+                                        disabled={!editing || isSubmitting}
                                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors disabled:bg-gray-50"
                                     />
                                 </div>
@@ -360,7 +361,7 @@ const Profile = () => {
                                         name="phong"
                                         value={formData.phong}
                                         onChange={handleInputChange}
-                                        disabled={true} // Nhân viên không được thay đổi phòng ban
+                                        disabled={!editing || isSubmitting}
                                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors disabled:bg-gray-50"
                                     />
                                 </div>
@@ -419,7 +420,7 @@ const Profile = () => {
                                     disabled={isChangingPassword}
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50"
                                     required
-                                />
+                                 />
                             </div>
 
                             <div>
