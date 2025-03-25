@@ -18,6 +18,7 @@ const EmployeeManagement = () => {
   const [avatarFile, setAvatarFile] = useState(null);
   const [avatarPreview, setAvatarPreview] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
 
   const [formData, setFormData] = useState({
     hoVaTen: '',
@@ -56,10 +57,34 @@ const EmployeeManagement = () => {
     'Nhân viên marketing'
   ];
 
+  // Lấy thông tin người dùng hiện tại khi component mount
+  useEffect(() => {
+    const getUserInfo = async () => {
+      try {
+        const userData = authUtils.getUserData();
+        
+        if (userData && userData.PhanQuyen !== 'Admin') {
+          // Nếu không phải admin, chuyển hướng hoặc hiển thị thông báo
+          toast.error("Bạn không có quyền truy cập trang này");
+          // Có thể thêm code chuyển hướng ở đây
+          return;
+        }
+        
+        setCurrentUser(userData);
+      } catch (error) {
+        console.error("Error getting user data:", error);
+      }
+    };
+    
+    getUserInfo();
+  }, []);
+
   // Fetch nhân viên
   useEffect(() => {
-    fetchEmployees();
-  }, [page, roleFilter, departmentFilter, searchTerm]);
+    if (currentUser && currentUser.PhanQuyen === 'Admin') {
+      fetchEmployees();
+    }
+  }, [page, roleFilter, departmentFilter, searchTerm, currentUser]);
 
   const fetchEmployees = async () => {
     try {
@@ -149,7 +174,11 @@ const EmployeeManagement = () => {
       fetchEmployees();
     } catch (error) {
       console.error("Error deleting employee:", error);
-      toast.error(error.response?.data?.message || "Không thể xóa nhân viên");
+      if (error.response?.status === 403) {
+        toast.error("Không thể xóa nhân viên. Bạn có thể vô hiệu hóa tài khoản thay vì xóa.");
+      } else {
+        toast.error(error.response?.data?.message || "Không thể xóa nhân viên");
+      }
     } finally {
       setLoading(false);
     }
@@ -267,7 +296,7 @@ const EmployeeManagement = () => {
       
       const employeeData = {
         ...formData,
-        Image: imageUrl // Đảm bảo trường này đúng với tên trường trong cơ sở dữ liệu của bạn
+        image: imageUrl // Đảm bảo trường này đúng với tên trường trong cơ sở dữ liệu của bạn
       };
       
       // Remove password if empty in edit mode
@@ -289,11 +318,30 @@ const EmployeeManagement = () => {
       fetchEmployees();
     } catch (error) {
       console.error("Error saving employee:", error);
-      toast.error(viewMode === 'create' ? "Không thể thêm nhân viên" : "Không thể cập nhật nhân viên");
+      if (error.response?.status === 403) {
+        toast.error("Bạn không có quyền thực hiện thao tác này");
+      } else if (error.response?.data?.message) {
+        toast.error(error.response.data.message);
+      } else {
+        toast.error(viewMode === 'create' ? "Không thể thêm nhân viên" : "Không thể cập nhật nhân viên");
+      }
     } finally {
       setLoading(false);
     }
   };
+
+  // Không hiển thị nội dung nếu không phải admin
+  if (currentUser && currentUser.PhanQuyen !== 'Admin') {
+    return (
+      <div className="p-6 flex flex-col items-center justify-center min-h-[60vh]">
+        <div className="bg-red-100 text-red-800 p-4 rounded-lg max-w-md text-center">
+          <h2 className="text-xl font-semibold mb-2">Không có quyền truy cập</h2>
+          <p>Bạn không có quyền quản lý nhân viên. Vui lòng liên hệ quản trị viên nếu cần trợ giúp.</p>
+        </div>
+        <ToastContainer position="top-right" autoClose={3000} />
+      </div>
+    );
+  }
 
   // Render danh sách nhân viên
   const renderEmployeeList = () => (
@@ -428,8 +476,10 @@ const EmployeeManagement = () => {
                       <button
                         onClick={() => handleDelete(employee.NhanVienID)}
                         className="text-red-600 hover:text-red-900"
+                        disabled={employee.NhanVienID === currentUser?.NhanVienID}
+                        title={employee.NhanVienID === currentUser?.NhanVienID ? "Không thể xóa tài khoản hiện tại" : ""}
                       >
-                        <Trash2 className="h-5 w-5" />
+                        <Trash2 className={`h-5 w-5 ${employee.NhanVienID === currentUser?.NhanVienID ? 'opacity-30 cursor-not-allowed' : ''}`} />
                       </button>
                     </div>
                   </td>
@@ -608,177 +658,187 @@ const EmployeeManagement = () => {
                   value={formData.phanQuyen}
                   onChange={handleInputChange}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={viewMode === 'edit' && currentEmployee?.NhanVienID === currentUser?.NhanVienID}
                 >
                   <option value="User">User</option>
                   <option value="Editor">Editor</option>
                   <option value="Admin">Admin</option>
                 </select>
+                {viewMode === 'edit' && currentEmployee?.NhanVienID === currentUser?.NhanVienID && (
+                  <p className="mt-1 text-xs text-red-500">Không thể thay đổi quyền của tài khoản đang sử dụng</p>
+                )}
               </div>
               
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="quyenXem"
-                    name="quyenXem"
-                    checked={formData.quyenXem}
-                    onChange={handleInputChange}
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                  />
-                  <label htmlFor="quyenXem" className="ml-2 block text-sm text-gray-700">
-                    Quyền xem
-                  </label>
-                </div>
-                
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="quyenThem"
-                    name="quyenThem"
-                    checked={formData.quyenThem}
-                    onChange={handleInputChange}
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                  />
-                  <label htmlFor="quyenThem" className="ml-2 block text-sm text-gray-700">
-                    Quyền thêm
-                  </label>
-                </div>
-                
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="quyenSua"
-                    name="quyenSua"
-                    checked={formData.quyenSua}
-                    onChange={handleInputChange}
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                  />
-                  <label htmlFor="quyenSua" className="ml-2 block text-sm text-gray-700">
-                    Quyền sửa
-                  </label>
-                </div>
-                
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="quyenXoa"
-                    name="quyenXoa"
-                    checked={formData.quyenXoa}
-                    onChange={handleInputChange}
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                  />
-                  <label htmlFor="quyenXoa" className="ml-2 block text-sm text-gray-700">
-                    Quyền xóa
-                  </label>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Ảnh đại diện
-              </label>
-              <div className="mt-1 flex flex-col items-center">
-                {avatarPreview ? (
-                  <div className="mb-3 relative">
-                    <img
-                      src={avatarPreview}
-                      alt="Avatar preview"
-                      className="h-32 w-32 object-cover rounded-full"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAvatarPreview('');
-                        setAvatarFile(null);
-                      }}
-                      className="absolute top-0 right-0 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="mb-3 h-32 w-32 rounded-full bg-gray-200 flex items-center justify-center">
-                    <UserCircle className="h-16 w-16 text-gray-400" />
-                  </div>
-                )}
-                <label className="w-full flex justify-center px-4 py-2 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50">
-                  <span className="text-sm text-gray-600">Chọn ảnh</span>
-                  <input
-                    type="file"
-                    className="hidden"
-                    accept="image/*"
-                    onChange={handleAvatarChange}
-                  />
-                </label>
-              </div>
-            </div>
-
-            <div className="mt-6">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Trạng thái
-              </label>
-              <select
-                name="trangThai"
-                value={formData.trangThai.toString()}
-                onChange={(e) => setFormData({...formData, trangThai: e.target.value === 'true'})}
-              // Tiếp tục code phần form nhân viên
-
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="true">Hoạt động</option>
-                <option value="false">Vô hiệu hóa</option>
-              </select>
-            </div>
- 
-            {viewMode === 'edit' && (
-              <div className="mt-6">
-                <p className="text-sm text-gray-500">
-                  Ngày tạo: {currentEmployee?.NgayTao ? new Date(currentEmployee.NgayTao).toLocaleDateString('vi-VN') : 'N/A'}
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
- 
-        <div className="mt-6 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={() => setViewMode('list')}
-            className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
-          >
-            Hủy
-          </button>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
-            disabled={loading}
-          >
-            {loading ? (
               <div className="flex items-center">
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                Đang xử lý...
-              </div>
-            ) : viewMode === 'create' ? (
-              'Thêm nhân viên'
-            ) : (
-              'Cập nhật'
-            )}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
- 
-  return (
-    <div className="p-6">
-      {viewMode === 'list' ? renderEmployeeList() : renderEmployeeForm()}
-      <ToastContainer position="top-right" autoClose={3000} />
-    </div>
-  );
- };
- 
- export default EmployeeManagement;
+                 <input
+                   type="checkbox"
+                   id="quyenXem"
+                   name="quyenXem"
+                   checked={formData.quyenXem}
+                   onChange={handleInputChange}
+                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                   disabled={viewMode === 'edit' && currentEmployee?.NhanVienID === currentUser?.NhanVienID}
+                 />
+                 <label htmlFor="quyenXem" className="ml-2 block text-sm text-gray-700">
+                   Quyền xem
+                 </label>
+               </div>
+               
+               <div className="flex items-center">
+                 <input
+                   type="checkbox"
+                   id="quyenThem"
+                   name="quyenThem"
+                   checked={formData.quyenThem}
+                   onChange={handleInputChange}
+                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                   disabled={viewMode === 'edit' && currentEmployee?.NhanVienID === currentUser?.NhanVienID}
+                 />
+                 <label htmlFor="quyenThem" className="ml-2 block text-sm text-gray-700">
+                   Quyền thêm
+                 </label>
+               </div>
+               
+               <div className="flex items-center">
+                 <input
+                   type="checkbox"
+                   id="quyenSua"
+                   name="quyenSua"
+                   checked={formData.quyenSua}
+                   onChange={handleInputChange}
+                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                   disabled={viewMode === 'edit' && currentEmployee?.NhanVienID === currentUser?.NhanVienID}
+                 />
+                 <label htmlFor="quyenSua" className="ml-2 block text-sm text-gray-700">
+                   Quyền sửa
+                 </label>
+               </div>
+               
+               <div className="flex items-center">
+                 <input
+                   type="checkbox"
+                   id="quyenXoa"
+                   name="quyenXoa"
+                   checked={formData.quyenXoa}
+                   onChange={handleInputChange}
+                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                   disabled={viewMode === 'edit' && currentEmployee?.NhanVienID === currentUser?.NhanVienID}
+                 />
+                 <label htmlFor="quyenXoa" className="ml-2 block text-sm text-gray-700">
+                   Quyền xóa
+                 </label>
+               </div>
+             </div>
+           </div>
+         </div>
+
+         <div className="space-y-6">
+           <div>
+             <label className="block text-sm font-medium text-gray-700 mb-1">
+               Ảnh đại diện
+             </label>
+             <div className="mt-1 flex flex-col items-center">
+               {avatarPreview ? (
+                 <div className="mb-3 relative">
+                   <img
+                     src={avatarPreview}
+                     alt="Avatar preview"
+                     className="h-32 w-32 object-cover rounded-full"
+                   />
+                   <button
+                     type="button"
+                     onClick={() => {
+                       setAvatarPreview('');
+                       setAvatarFile(null);
+                     }}
+                     className="absolute top-0 right-0 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                   >
+                     <X className="h-4 w-4" />
+                   </button>
+                 </div>
+               ) : (
+                 <div className="mb-3 h-32 w-32 rounded-full bg-gray-200 flex items-center justify-center">
+                   <UserCircle className="h-16 w-16 text-gray-400" />
+                 </div>
+               )}
+               <label className="w-full flex justify-center px-4 py-2 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50">
+                 <span className="text-sm text-gray-600">Chọn ảnh</span>
+                 <input
+                   type="file"
+                   className="hidden"
+                   accept="image/*"
+                   onChange={handleAvatarChange}
+                 />
+               </label>
+             </div>
+           </div>
+
+           <div className="mt-6">
+             <label className="block text-sm font-medium text-gray-700 mb-1">
+               Trạng thái
+             </label>
+             <select
+               name="trangThai"
+               value={formData.trangThai.toString()}
+               onChange={(e) => setFormData({...formData, trangThai: e.target.value === 'true'})}
+               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+               disabled={viewMode === 'edit' && currentEmployee?.NhanVienID === currentUser?.NhanVienID}
+             >
+               <option value="true">Hoạt động</option>
+               <option value="false">Vô hiệu hóa</option>
+             </select>
+             {viewMode === 'edit' && currentEmployee?.NhanVienID === currentUser?.NhanVienID && (
+               <p className="mt-1 text-xs text-red-500">Không thể vô hiệu hóa tài khoản đang sử dụng</p>
+             )}
+           </div>
+
+           {viewMode === 'edit' && (
+             <div className="mt-6">
+               <p className="text-sm text-gray-500">
+                 Ngày tạo: {currentEmployee?.NgayTao ? new Date(currentEmployee.NgayTao).toLocaleDateString('vi-VN') : 'N/A'}
+               </p>
+             </div>
+           )}
+         </div>
+       </div>
+
+       <div className="mt-6 flex justify-end gap-2">
+         <button
+           type="button"
+           onClick={() => setViewMode('list')}
+           className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
+         >
+           Hủy
+         </button>
+         <button
+           type="button"
+           onClick={handleSubmit}
+           className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+           disabled={loading}
+         >
+           {loading ? (
+             <div className="flex items-center">
+               <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+               Đang xử lý...
+             </div>
+           ) : viewMode === 'create' ? (
+             'Thêm nhân viên'
+           ) : (
+             'Cập nhật'
+           )}
+         </button>
+       </div>
+     </div>
+   </div>
+ );
+
+ return (
+   <div className="p-6">
+     {viewMode === 'list' ? renderEmployeeList() : renderEmployeeForm()}
+     <ToastContainer position="top-right" autoClose={3000} />
+   </div>
+ );
+};
+
+export default EmployeeManagement;
